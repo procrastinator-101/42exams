@@ -1,0 +1,23 @@
+#include "microshell.h"
+
+int main(int argc, char **argv, char **envp)
+{
+    int		i;
+	int		start;
+	char	*args;
+    t_cmd	*cmds;
+
+    if (argc < 2)
+        return (0);
+    i = 0;
+	start = 0;
+    while (i < argc)
+    {
+		if (!ft_strcmp(argv[i], ";"))
+		{
+			ft_cmd_addback(&cmds, ft_cmd_create(argv[start], argv + start, i - start, SEMICOLON));
+		}
+		else
+    }
+
+}

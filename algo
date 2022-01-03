@@ -1,0 +1,22 @@
+parse command
+
+execute pipeline
+	if (pipeline.size > 1)
+	{
+		create pipe
+		if (first scmd)
+			cmd.out = pipe[0]
+		else if (last scmd)
+			cmd.in = last_pipe[1]
+		else
+		{
+			cmd.out = pipe[0]
+			cmd.in = lats_pipe[1]
+		}
+		last_pipe = pipe
+	}
+	fork()
+	if (child)
+		execute simple command
+	else
+
