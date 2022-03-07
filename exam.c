@@ -5,6 +5,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+typedef enum
+{
+	_fatal,
+	_execve,
+	_chdir
+}	error;
 
 
 typedef	struct s_scmd
@@ -15,6 +21,30 @@ typedef	struct s_scmd
 	char			**args;
 	struct s_scmd	*next;
 }					t_scmd;
+
+int	ft_strlen(char *str)
+{
+	int	len;
+
+	len = 0;
+	while (str[len])
+		len++;
+	return len;
+}
+
+void	ft_putstr_fd(char *str, int fd)
+{
+	int	len;
+
+	len = ft_strlen(str);
+	write(fd, str, len);
+}
+
+void	ft_manage_fatal_error()
+{
+	ft_putstr_fd("error: fatal\n", STDERR_FILENO);
+	exit(EXIT_FAILURE);
+}
 
 void	scmd_display(t_scmd *cmd)
 {
@@ -44,6 +74,8 @@ t_scmd	*scmd_create(char **argv, int argc, int *idx)
 	t_scmd	*scmd;
 
 	scmd = malloc(sizeof(t_scmd));
+	if (!scmd)
+		return 0;
 	scmd->fdin = STDIN_FILENO;
 	scmd->fdout = STDOUT_FILENO;
 	scmd->next = 0;
@@ -60,6 +92,11 @@ t_scmd	*scmd_create(char **argv, int argc, int *idx)
 		size++;
 	}
 	scmd->args = malloc(size * sizeof(char *));
+	if (!scmd->args)
+	{
+		free(scmd);
+		return 0;
+	}
 	for (int i = 0; i < size - 1; i++)
 		scmd->args[i] = argv[start + i];
 	scmd->args[size - 1] = 0;
@@ -86,6 +123,8 @@ void	scmd_clear(t_scmd **tail)
 	t_scmd	*next;
 	t_scmd	*head;
 
+	if (tail)
+		return;
 	head = *tail;
 	while (head)
 	{
@@ -97,7 +136,7 @@ void	scmd_clear(t_scmd **tail)
 	*tail = 0;
 }
 
-void	scmd_execute(t_scmd *scmd, t_scmd *previous, int oldpipe[2], int newpipe[2], char **envp)
+void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 {
 	int	pid;
 	int	status;
@@ -111,75 +150,89 @@ void	scmd_execute(t_scmd *scmd, t_scmd *previous, int oldpipe[2], int newpipe[2]
 		pid = fork();
 		if (pid == 0)
 		{
-			if (scmd->fdin != STDIN_FILENO)
-				dup2(scmd->fdin, STDIN_FILENO);
-			if (scmd->fdout != STDOUT_FILENO)
-				dup2(scmd->fdout, STDOUT_FILENO);
+			if (newpipe[0] != -1)
+				close(newpipe[0]);
+			// printf("+fdin  : %d\n", scmd->fdin);
+			// printf("+fdout : %d\n", scmd->fdout);
+			dup2(scmd->fdin, STDIN_FILENO);
+			dup2(scmd->fdout, STDOUT_FILENO);
 			execve(scmd->args[0], scmd->args, envp);
-			exit(1);
+			ft_putstr_fd("error: cannot execute ", STDERR_FILENO);
+			ft_putstr_fd(scmd->args[0], STDERR_FILENO);
+			ft_putstr_fd("\n", STDERR_FILENO);
+			exit(EXIT_FAILURE);
 		}
-		//
-		if (oldpipe[0] != -1)
-			close(oldpipe[0]);
-		if (scmd->op == '|')
+		else if (pid < 0)
+			ft_manage_fatal_error();
+		if (newpipe[1] != -1)
 		{
-			oldpipe[0] = newpipe[0];
-			oldpipe[1] = newpipe[1];
-		}
-		else
-		{
-			oldpipe[0] = -1;
-			oldpipe[1] = -1;
-			close(newpipe[0]);
 			close(newpipe[1]);
+			newpipe[1] = -1;
 		}
-		//
+		if (oldpipe[0] != -1)
+		{
+			close(oldpipe[0]);
+			oldpipe[0] = -1;
+		}
+		oldpipe[0] = newpipe[0];
+		newpipe[0] = -1;
+		// for (int i = 0; i < 2; i++)
+		// 	printf("oldpipe[%d] = %d\n", i, oldpipe[i]);
+		// for (int i = 0; i < 2; i++)
+		// 	printf("newpipe[%d] = %d\n", i, newpipe[i]);
 		waitpid(pid, &status, 0);
+	}
+}
+
+void	ft_cmd_execute(t_scmd *cmd, char **envp)
+{
+	int		oldpipe[2];
+	int		newpipe[2];
+	t_scmd	*head;
+	t_scmd	*previous;
+
+	head = cmd;
+	previous = 0;
+	oldpipe[0] = -1;
+	oldpipe[1] = -1;
+	newpipe[0] = -1;
+	newpipe[1] = -1;
+	while (head)
+	{
+		if (head->op == '|' && head->next)
+		{
+			pipe(newpipe);
+			// printf("in = %d | out = %d\n", newpipe[0], newpipe[1]);
+			head->fdout = newpipe[1];
+		}
+		if (previous && previous->op == '|')
+			head->fdin = oldpipe[0];
+		scmd_execute(head, envp, oldpipe, newpipe);
+		previous = head;
+		head = head->next;
 	}
 }
 
 int main(int argc, char **argv, char **envp)
 {
-	int		oldpipe[2];
-	int		newpipe[2];
-	t_scmd	*cmd = 0;
-	t_scmd	*head;
-	t_scmd	*previous = 0;
+	t_scmd	*cmd;
+	t_scmd	*tmp;
 
+	cmd = 0;
 	for (int i = 1; i < argc;)
 	{
 		if (strcmp(argv[i], "|") && strcmp(argv[i], ";"))
 		{
-			head = scmd_create(argv, argc, &i);
-			scmd_addback(&cmd, head);
+			tmp = scmd_create(argv, argc, &i);
+			if (!tmp)
+				ft_manage_fatal_error();
+			scmd_addback(&cmd, tmp);
 		}
 		else
 			i++;
 	}
+	ft_cmd_execute(cmd, envp);
 	// scmd_display(cmd);
-
-	head = cmd;
-	oldpipe[0] = -1;
-	oldpipe[1] = -1;
-	while (head)
-	{
-		if (oldpipe[1] != -1)
-			close(oldpipe[1]);
-		if (head->op == '|')
-		{
-			pipe(newpipe);
-			printf("in = %d | out = %d\n", newpipe[0], newpipe[1]);
-			if (head->next)
-				head->fdout = newpipe[1];
-		}
-		if (previous && previous->op == '|')
-			head->fdin = oldpipe[0];
-		scmd_execute(head, previous, oldpipe, newpipe, envp);
-		
-		previous = head;
-		head = head->next;
-	}
-	scmd_display(cmd);
 	scmd_clear(&cmd);
 	return 0;
 }
