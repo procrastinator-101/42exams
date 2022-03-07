@@ -10,19 +10,19 @@
 # define HRDC	1
 # define RRDC	2
 
-typedef struct s_rdc
-{
-	int				type;
-	char			*operand;
-	struct s_rdc	*next;
-}						t_rdc;
+/*
+	./pipex	file1 cmd1 cmd2 cmd3 ... cmdn file2
+			< file1 cmd1 | cmd2 | cmd3 ... | cmdn > file2
+
+	./pipex here_doc LIMITER cmd cmd1 file
+			cmd << LIMITER | cmd1 >> file
+*/
 
 typedef struct s_scmd
 {
 	int				fdin;
 	int				fdout;
 	char			**args;
-	t_rdc			*rdcs;
 	struct s_scmd	*next;
 }					t_scmd;
 

@@ -4,10 +4,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-
-//scmd : here_doc LIMITER inputFile cmd outputFile
-
-
 char	*ft_substr(const char *str, size_t start, size_t size)
 {
 	size_t	i;
