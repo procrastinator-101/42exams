@@ -5,14 +5,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-typedef enum
-{
-	_fatal,
-	_execve,
-	_chdir
-}	error;
-
-
 typedef	struct s_scmd
 {
 	char			op;
@@ -123,7 +115,7 @@ void	scmd_clear(t_scmd **tail)
 	t_scmd	*next;
 	t_scmd	*head;
 
-	if (tail)
+	if (!tail)
 		return;
 	head = *tail;
 	while (head)
@@ -150,32 +142,45 @@ void	ft_update_pipes(t_scmd *scmd, int oldpipe[2], int newpipe[2])
 	}
 	oldpipe[0] = newpipe[0];
 	newpipe[0] = -1;
-	// if (scmd->op != '|' && oldpipe[0] != -1)
-	// {
-	// 	close(oldpipe[0]);
-	// 	oldpipe[0] = -1;
-	// }
 }
 
 void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 {
 	int	pid;
+	int	len;
 	int	tmpin;
 	int	tmpout;
 	int	status;
 
 	if (!strcmp("cd", scmd->args[0]))
 	{
+		len = 0;
+		while (scmd->args[len])
+			len++;
+		if (len != 2)
+		{
+			ft_putstr_fd("error: cd: bad arguments\n", STDERR_FILENO);
+			ft_update_pipes(scmd, oldpipe, newpipe);
+			return;
+		}
 		tmpin = dup(STDIN_FILENO);
 		tmpout = dup(STDOUT_FILENO);
 		dup2(scmd->fdin, STDIN_FILENO);
 		dup2(scmd->fdout, STDOUT_FILENO);
-		printf("cd\n");
+		ft_putstr_fd("cd\n", 1);
+		status = chdir(scmd->args[1]);
 		dup2(tmpin, STDIN_FILENO);
 		dup2(tmpout, STDOUT_FILENO);
 		close(tmpin);
 		close(tmpout);
 		ft_update_pipes(scmd, oldpipe, newpipe);
+		if (status)
+		{
+			ft_putstr_fd("error: cd: cannot change directory to ", STDERR_FILENO);
+			ft_putstr_fd(scmd->args[1], STDERR_FILENO);
+			ft_putstr_fd("\n", STDERR_FILENO);
+			return;
+		}
 	}
 	else
 	{
@@ -184,8 +189,8 @@ void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 		{
 			if (newpipe[0] != -1)
 				close(newpipe[0]);
-			printf("+fdin  : %d\n", scmd->fdin);
-			printf("+fdout : %d\n", scmd->fdout);
+			// printf("+fdin  : %d\n", scmd->fdin);
+			// printf("+fdout : %d\n", scmd->fdout);
 			dup2(scmd->fdin, STDIN_FILENO);
 			dup2(scmd->fdout, STDOUT_FILENO);
 			execve(scmd->args[0], scmd->args, envp);
@@ -197,10 +202,6 @@ void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 		else if (pid < 0)
 			ft_manage_fatal_error();
 		ft_update_pipes(scmd, oldpipe, newpipe);
-		// for (int i = 0; i < 2; i++)
-		// 	printf("oldpipe[%d] = %d\n", i, oldpipe[i]);
-		// for (int i = 0; i < 2; i++)
-		// 	printf("newpipe[%d] = %d\n", i, newpipe[i]);
 		waitpid(pid, &status, 0);
 	}
 }
