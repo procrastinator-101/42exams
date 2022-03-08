@@ -136,14 +136,46 @@ void	scmd_clear(t_scmd **tail)
 	*tail = 0;
 }
 
+void	ft_update_pipes(t_scmd *scmd, int oldpipe[2], int newpipe[2])
+{
+	if (newpipe[1] != -1)
+	{
+		close(newpipe[1]);
+		newpipe[1] = -1;
+	}
+	if (oldpipe[0] != -1)
+	{
+		close(oldpipe[0]);
+		oldpipe[0] = -1;
+	}
+	oldpipe[0] = newpipe[0];
+	newpipe[0] = -1;
+	// if (scmd->op != '|' && oldpipe[0] != -1)
+	// {
+	// 	close(oldpipe[0]);
+	// 	oldpipe[0] = -1;
+	// }
+}
+
 void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 {
 	int	pid;
+	int	tmpin;
+	int	tmpout;
 	int	status;
 
 	if (!strcmp("cd", scmd->args[0]))
 	{
+		tmpin = dup(STDIN_FILENO);
+		tmpout = dup(STDOUT_FILENO);
+		dup2(scmd->fdin, STDIN_FILENO);
+		dup2(scmd->fdout, STDOUT_FILENO);
 		printf("cd\n");
+		dup2(tmpin, STDIN_FILENO);
+		dup2(tmpout, STDOUT_FILENO);
+		close(tmpin);
+		close(tmpout);
+		ft_update_pipes(scmd, oldpipe, newpipe);
 	}
 	else
 	{
@@ -152,8 +184,8 @@ void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 		{
 			if (newpipe[0] != -1)
 				close(newpipe[0]);
-			// printf("+fdin  : %d\n", scmd->fdin);
-			// printf("+fdout : %d\n", scmd->fdout);
+			printf("+fdin  : %d\n", scmd->fdin);
+			printf("+fdout : %d\n", scmd->fdout);
 			dup2(scmd->fdin, STDIN_FILENO);
 			dup2(scmd->fdout, STDOUT_FILENO);
 			execve(scmd->args[0], scmd->args, envp);
@@ -164,18 +196,7 @@ void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 		}
 		else if (pid < 0)
 			ft_manage_fatal_error();
-		if (newpipe[1] != -1)
-		{
-			close(newpipe[1]);
-			newpipe[1] = -1;
-		}
-		if (oldpipe[0] != -1)
-		{
-			close(oldpipe[0]);
-			oldpipe[0] = -1;
-		}
-		oldpipe[0] = newpipe[0];
-		newpipe[0] = -1;
+		ft_update_pipes(scmd, oldpipe, newpipe);
 		// for (int i = 0; i < 2; i++)
 		// 	printf("oldpipe[%d] = %d\n", i, oldpipe[i]);
 		// for (int i = 0; i < 2; i++)
