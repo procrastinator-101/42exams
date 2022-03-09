@@ -128,7 +128,7 @@ void	scmd_clear(t_scmd **tail)
 	*tail = 0;
 }
 
-void	ft_update_pipes(t_scmd *scmd, int oldpipe[2], int newpipe[2])
+void	ft_update_pipes(int oldpipe[2], int newpipe[2])
 {
 	if (newpipe[1] != -1)
 	{
@@ -160,7 +160,7 @@ void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 		if (len != 2)
 		{
 			ft_putstr_fd("error: cd: bad arguments\n", STDERR_FILENO);
-			ft_update_pipes(scmd, oldpipe, newpipe);
+			ft_update_pipes(oldpipe, newpipe);
 			return;
 		}
 		tmpin = dup(STDIN_FILENO);
@@ -173,7 +173,7 @@ void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 		dup2(tmpout, STDOUT_FILENO);
 		close(tmpin);
 		close(tmpout);
-		ft_update_pipes(scmd, oldpipe, newpipe);
+		ft_update_pipes(oldpipe, newpipe);
 		if (status)
 		{
 			ft_putstr_fd("error: cd: cannot change directory to ", STDERR_FILENO);
@@ -201,7 +201,7 @@ void	scmd_execute(t_scmd *scmd, char **envp, int oldpipe[2], int newpipe[2])
 		}
 		else if (pid < 0)
 			ft_manage_fatal_error();
-		ft_update_pipes(scmd, oldpipe, newpipe);
+		ft_update_pipes(oldpipe, newpipe);
 		waitpid(pid, &status, 0);
 	}
 }
