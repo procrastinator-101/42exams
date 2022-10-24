@@ -1,3 +1,0 @@
-
--	redirection takes precedence over a pipe
--	last redirection takes precedence
