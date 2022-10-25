@@ -1,6 +1,9 @@
 #include <errno.h>
 #include <string.h>
+#include <sys/select.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -104,7 +107,7 @@ void	ft_client_del(t_client *client)
 {
 	if (!client)
 		return ;
-	close(client.fd);
+	close(client->fd);
 	free(client->msg);
 	free(client);
 }
@@ -131,8 +134,18 @@ void	ft_client_remove(t_client **tail, t_client *client)
 
 	prev = 0;
 	head = *tail;
-	if (head && head == client)
-
+	while (head && head != client)
+	{
+		prev = head;
+		head = head->next;
+	}
+	if (!head)
+		return ;
+	if (prev)
+		prev->next = head->next;
+	else
+		*tail = head->next;
+	ft_client_del(client);
 }
 //======================================================================================================
 // Client methods	End
@@ -146,7 +159,7 @@ typedef struct s_server
 {
 	int				fd;
 	int				ids;
-	int				nfds
+	int				nfds;
 	fd_set			readfds;
 	fd_set			writefds;
 	fd_set			watchedfds;
@@ -160,12 +173,11 @@ void	ft_initialize_server()
 {
 	server.ids = 0;
 	server.nfds = server.fd + 1;
-	FD_ZERO(&rserver.eadfds);
-	FD_ZERO(&server.writefds);
 	FD_ZERO(&server.watchedfds);
+	FD_SET(server.fd, &server.watchedfds);
 	server.clients = 0;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 2000;
+	server.timeout.tv_sec = 0;
+	server.timeout.tv_usec = 2000;
 }
 
 char	*ft_format_msg(char *fmt, int id, char *str)
@@ -188,7 +200,7 @@ void	ft_send_msg(t_client *client, char *msg)
 	send(client->fd, msg, strlen(msg), 0);
 }
 
-ft_broadcast(t_client *client, char *msg)
+void	ft_broadcast(t_client *client, char *msg)
 {
 	t_client	*head;
 
@@ -203,10 +215,10 @@ ft_broadcast(t_client *client, char *msg)
 
 void	ft_accept_client()
 {
-	int					len;
 	int					ret;
 	char				*msg;
-	t_client			client;
+	t_client			*client;
+	socklen_t			len;
 	struct sockaddr_in	address;
 
 	len = sizeof(struct sockaddr_in);
@@ -222,6 +234,41 @@ void	ft_accept_client()
 	msg = ft_format_msg("server: client %d ", client->id, "just arrived\n");
 	ft_broadcast(client, msg);
 	free(msg);
+}
+
+void	ft_disconnect_client(t_client *client)
+{
+	char	*msg;
+
+	msg = ft_format_msg("server: client %d ", client->id, "just left\n");
+	ft_broadcast(client, msg);
+	free(msg);
+	FD_CLR(client->fd, &server.watchedfds);
+	ft_client_remove(&server.clients, client);
+}
+
+void	ft_send_client_msg(t_client *client)
+{
+	int		ret;
+	char	*msg;
+	char	*line;
+
+	ret = 1;
+	while (ret == 1)
+	{
+		line = 0;
+		ret = extract_message(&client->msg, &line);
+		if (ret < 0)
+			ft_manage_fatal_error();
+		else if (ret)
+		{
+			msg = ft_format_msg("client %d: ", client->id, line);
+			ft_broadcast(client, msg);
+			free(msg);
+		}
+		free(line);
+	}
+	
 }
 
 void	ft_read_from_client(t_client *client)
@@ -243,12 +290,15 @@ void	ft_read_from_client(t_client *client)
 		else
 		{
 			buf[ret] = 0;
-			client.msg = str_join(client.msg, buf);
-			if (!client.msg)
+			client->msg = str_join(client->msg, buf);
+			if (!client->msg)
 				ft_manage_fatal_error();
-			
+			ft_send_client_msg(client);
+			if (ret < 1024)
+				break;
 		}
 	}
+	free(buf);
 }
 
 void	ft_communicate_with_clients()
@@ -291,7 +341,6 @@ void	ft_server_up()
 
 
 
-
 int main(int argc, char **argv)
 {
 	int	ret;
@@ -318,11 +367,11 @@ int main(int argc, char **argv)
 	address.sin_port = htons(port); 
   
 	// Binding newly created socket to given IP and verification 
-	ret = bind(sockfd, (const struct sockaddr *)&address, sizeof(address));
+	ret = bind(server.fd, (const struct sockaddr *)&address, sizeof(address));
 	if (ret == -1)
 		ft_manage_fatal_error();
 	
-	ret = listen(sockfd, 10);
+	ret = listen(server.fd, 10);
 	if (ret == -1)
 		ft_manage_fatal_error();
 	
